@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chansonnier Basque - Euskal Kantutegia</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#065f46">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Kantutegia">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <!-- Tailwind CSS & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; }
+        strong { color: #b45309; font-weight: 800; font-size: 1.05em; } /* Style pour le groupe consonantique */
+        .tab-active { border-color: #047857; color: #047857; background-color: #ecfdf5; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- En-tête -->
+    <header class="bg-emerald-800 text-white shadow-md p-4 flex items-center justify-between z-10 shrink-0">
+        <h1 class="text-lg md:text-2xl font-bold tracking-wide flex items-center gap-2">
+            <i class="fa-solid fa-music text-emerald-300"></i> Chansonnier Basque
+        </h1>
+        <div class="flex items-center gap-3">
+            <span id="connectionStatus" class="text-[10px] md:text-xs bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-600/30">
+                <i class="fa-solid fa-sync fa-spin mr-1 text-emerald-400"></i> Chargement...
+            </span>
+            <button id="installBtn" class="hidden text-xs bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-1.5 rounded-lg transition shadow-md flex items-center gap-1">
+                <i class="fa-solid fa-download"></i> Installer l'app
+            </button>
+        </div>
+    </header>
+
+    <!-- Conteneur Principal -->
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        <!-- BARRE LATÉRALE : Liste des chants -->
+        <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20">
+            <!-- Recherche & Filtres -->
+            <div class="p-4 border-b border-slate-200 bg-slate-50/50 space-y-3">
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="Rechercher un chant..." 
+                           class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400"></i>
+                </div>
+                <div>
+                    <select id="dialectFilter" class="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <option value="">Tous les dialectes</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Liste des chansons -->
+            <div id="songList" class="flex-1 overflow-y-auto divide-y divide-slate-100">
+                <div class="p-8 text-center text-slate-500">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl text-emerald-600 mb-2 block"></i>
+                    Chargement du chansonnier...
+                </div>
+            </div>
+        </aside>
+
+        <!-- PANNEAU DÉTAIL : Paroles -->
+        <main id="detailPanel" class="hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex-col justify-center items-center text-slate-400">
+            <div class="text-center">
+                <i class="fa-solid fa-music text-6xl mb-4 text-slate-200"></i>
+                <p class="text-lg font-medium text-slate-500">Sélectionnez une chanson pour l'afficher</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const SPREADSHEET_ID = '1q_4V-Mv_vxYpR6Dyt58jGec6u8nelQaXmkn3yu8xTak';
+        const SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+
+        let songs = [];
+        let activeSongId = null;
+        let activeMobileTab = 'lyrics';
+        let deferredPrompt = null;
+
+        // --- Gestion de l'installation de l'App ---
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtn = document.getElementById('installBtn');
+            if (installBtn) installBtn.classList.remove('hidden');
+        });
+
+        document.getElementById('installBtn').addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                deferredPrompt = null;
+                document.getElementById('installBtn').classList.add('hidden');
+            }
+        });
+
+        // --- Enregistrement du Service Worker pour le mode hors-ligne ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('PWA Service Worker enregistré !'))
+                    .catch(err => console.warn('Erreur de Service Worker', err));
+            });
+        }
+
+        // --- Chargement des données (Cache Local + Réseau en tâche de fond) ---
+        async function loadData() {
+            const cached = localStorage.getItem('chansonnier_songs');
+            if (cached) {
+                try {
+                    songs = JSON.parse(cached);
+                    populateDialectFilter();
+                    renderSongList();
+                    document.getElementById('connectionStatus').innerHTML = `
+                        <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Chargé (Hors-ligne)
+                    `;
+                } catch(e) {}
+            }
+
+            try {
+                const response = await fetch(SPREADSHEET_URL);
+                const text = await response.text();
+                const jsonString = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+                const json = JSON.parse(jsonString);
+
+                const cols = json.table.cols.map(c => c.label || '');
+                let fetchedSongs = json.table.rows.map((r, index) => {
+                    const song = {};
+                    r.c.forEach((cell, idx) => {
+                        const colName = cols[idx] || `col_${idx}`;
+                        song[colName] = cell ? cell.v : '';
+                    });
+                    if (!song['ID']) song['ID'] = index + 1;
+                    return song;
+                }).filter(song => song['Izenbürüa']);
+
+                // Filtre de relecture/brouillon (Sera retiré si 'Publié' est à FALSE)
+                fetchedSongs = fetchedSongs.filter(song => {
+                    const isPublished = song['Publié'];
+                    if (isPublished === 'FALSE' || isPublished === false) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                // CLASSEMENT ALPHABÉTIQUE AUTOMATIQUE PAR TITRE
+                fetchedSongs.sort((a, b) => {
+                    const titleA = (a['Izenbürüa'] || '').toString().toLowerCase();
+                    const titleB = (b['Izenbürüa'] || '').toString().toLowerCase();
+                    return titleA.localeCompare(titleB, 'fr');
+                });
+
+                songs = fetchedSongs;
+                localStorage.setItem('chansonnier_songs', JSON.stringify(songs));
+
+                populateDialectFilter();
+                renderSongList();
+                
+                document.getElementById('connectionStatus').innerHTML = `
+                    <i class="fa-solid fa-cloud text-emerald-400 mr-1"></i> Synchronisé
+                `;
+            } catch (error) {
+                console.warn("Impossible de synchroniser avec Google Sheets :", error);
+                if (songs.length === 0) {
+                    document.getElementById('songList').innerHTML = `
+                        <div class="p-8 text-red-600 text-sm text-center font-medium">
+                            <i class="fa-solid fa-wifi-slash text-2xl mb-2 block"></i>
+                            Première connexion requise pour télécharger les chants.
+                        </div>`;
+                }
+            }
+        }
+
+        function populateDialectFilter() {
+            const select = document.getElementById('dialectFilter');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Tous les dialectes</option>';
+            
+            const dialects = [...new Set(songs.map(s => s['Eüskalkia']).filter(Boolean))].sort();
+            dialects.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                if (d === currentVal) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
+        function renderSongList(filteredSongs = songs) {
+            const listEl = document.getElementById('songList');
+            if (filteredSongs.length === 0) {
+                listEl.innerHTML = `<div class="p-8 text-center text-slate-400 text-sm">Aucun chant ne correspond</div>`;
+                return;
+            }
+
+            listEl.innerHTML = filteredSongs.map(song => `
+                <button onclick="selectSong(${song['ID']})" class="w-full text-left p-4 hover:bg-emerald-50/50 focus:outline-none focus:bg-emerald-50 transition border-l-4 ${activeSongId === song['ID'] ? 'border-emerald-600 bg-emerald-50/40' : 'border-transparent'} block">
+                    <div class="font-bold text-slate-800 text-sm md:text-base">${song['Izenbürüa']}</div>
+                    <div class="flex items-center justify-between mt-1 gap-2">
+                        <span class="text-xs text-slate-500 truncate">${song['Koblakaria'] || 'Auteur inconnu'}</span>
+                        ${song['Eüskalkia'] ? `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-semibold shrink-0">${song['Eüskalkia']}</span>` : ''}
+                    </div>
+                </button>
+            `).join('');
+        }
+
+        function filterSongs() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const dialect = document.getElementById('dialectFilter').value;
+
+            const filtered = songs.filter(song => {
+                const matchesSearch = 
+                    (song['Izenbürüa'] && song['Izenbürüa'].toString().toLowerCase().includes(search)) ||
+                    (song['Koblakaria'] && song['Koblakaria'].toString().toLowerCase().includes(search)) ||
+                    (song['Nonkoa'] && song['Nonkoa'].toString().toLowerCase().includes(search));
+                
+                const matchesDialect = !dialect || song['Eüskalkia'] === dialect;
+                return matchesSearch && matchesDialect;
+            });
+
+            renderSongList(filtered);
+        }
+
+        // --- Algorithme Phonétique Souletin ---
+        // Met en gras la consonne ET le 'h' qui la suit (th, lh, nh, ph, kh, rh, ñh)
+        function highlightPhonetics(text) {
+            if (!text) return '';
+            let escaped = text.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            
+            // Expression régulière qui capture la consonne ET le H ensemble pour les mettre dans la balise strong
+            return escaped.replace(/([tTlLnNpPkKrRñÑ][hH])/g, '<strong>$1</strong>');
+        }
+
+        function formatLyrics(text, isPhonetic = false) {
+            if (!text) return '<p class="text-slate-400 italic">Paroles en cours de saisie...</p>';
+            
+            let safeText = isPhonetic ? highlightPhonetics(text) : text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            
+            return `<div class="lyrics-box text-slate-700 leading-relaxed"><p>` + 
+                safeText
+                    .replace(/\\n\\n/g, '</p><p>')
+                    .replace(/\\n/g, '<br>') + 
+                `</p></div>`;
+        }
+
+        // --- Gestion des liens vidéos multiples ---
+        function getYoutubeEmbedUrl(url) {
+            if (!url) return null;
+            let videoId = '';
+            if (url.includes('youtube.com/watch')) {
+                try {
+                    const urlParams = new URLSearchParams(new URL(url).search);
+                    videoId = urlParams.get('v');
+                } catch(e) {}
+            } else if (url.includes('youtu.be/')) {
+                videoId = url.split('youtu.be/')[1]?.split('?')[0];
+            }
+            return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+        }
+
+        function renderAllMedia(rawUrls) {
+            if (!rawUrls) return '';
+            
+            const urls = rawUrls.toString().split(/[\\s,;\\n]+/);
+            let embedHtml = '';
+            let externalLinksHtml = '';
+            let count = 1;
+
+            urls.forEach(url => {
+                const cleanUrl = url.trim();
+                if (!cleanUrl || !cleanUrl.startsWith('http')) return;
+
+                const embedUrl = getYoutubeEmbedUrl(cleanUrl);
+                if (embedUrl) {
+                    embedHtml += `
+                        <div class="mb-4">
+                            <span class="block text-xs font-semibold text-slate-500 mb-1"><i class="fa-brands fa-youtube text-red-500 mr-1"></i> Version #${count}</span>
+                            <div class="aspect-video w-full rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-black">
+                                <iframe class="w-full h-full" src="${embedUrl}" frameborder="0" allowfullscreen></iframe>
+                            </div>
+                        </div>`;
+                    count++;
+                } else {
+                    externalLinksHtml += `
+                        <a href="${cleanUrl}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition">
+                            <i class="fa-solid fa-arrow-up-right-from-square text-emerald-600"></i> Écouter la version #${count}
+                        </a>`;
+                    count++;
+                }
+            });
+
+            if (!embedHtml && !externalLinksHtml) return '';
+
+            return `
+                <div class="mt-8 border-t border-slate-200 pt-6">
+                    <h4 class="text-sm font-extrabold text-slate-800 mb-4"><i class="fa-solid fa-play text-emerald-700 mr-2"></i>Interprétation & Enregistrements</h4>
+                    ${embedHtml}
+                    ${externalLinksHtml ? `<div class="flex flex-wrap gap-2 mt-2">${externalLinksHtml}</div>` : ''}
+                </div>`;
+        }
+
+        // --- Navigation Mobile & Desktop ---
+        function selectSong(id) {
+            activeSongId = id;
+            const song = songs.find(s => s['ID'] == id);
+            if (!song) return;
+
+            renderSongList();
+
+            const detailPanel = document.getElementById('detailPanel');
+            
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.add('hidden');
+            }
+            
+            detailPanel.className = "flex-1 bg-white overflow-y-auto p-4 md:p-8 flex flex-col";
+
+            const hasPhonetic = !!song['Ahozkatzeko idazkera'];
+            const hasTranslation = !!song['Frantsesera ützülpena'];
+
+            let mobileTabsBar = '';
+            if (hasPhonetic || hasTranslation) {
+                mobileTabsBar = `
+                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl">
+                        <button id="tabBtn-lyrics" onclick="switchMobileTab('lyrics')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg transition duration-200 bg-white text-emerald-800 shadow-sm">
+                            <i class="fa-solid fa-language mr-1"></i> Original
+                        </button>
+                        ${hasPhonetic ? `
+                        <button id="tabBtn-phonetic" onclick="switchMobileTab('phonetic')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">
+                            <i class="fa-solid fa-ear-listen mr-1"></i> Phonétique
+                        </button>` : ''}
+                        ${hasTranslation ? `
+                        <button id="tabBtn-translation" onclick="switchMobileTab('translation')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">
+                            <i class="fa-solid fa-flag mr-1"></i> Traduction
+                        </button>` : ''}
+                    </div>
+                `;
+            }
+
+            detailPanel.innerHTML = `
+                <div class="flex items-center justify-between md:hidden mb-4">
+                    <button onclick="goBackToList()" class="flex items-center gap-1 text-emerald-800 font-extrabold text-sm py-2 px-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition">
+                        <i class="fa-solid fa-arrow-left"></i> Retour aux chants
+                    </button>
+                </div>
+
+                <div class="border-b border-slate-200 pb-5 mb-5">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900">${song['Izenbürüa']}</h2>
+                        ${song['Eüskalkia'] ? `<span class="bg-emerald-100 text-emerald-800 text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${song['Eüskalkia']}</span>` : ''}
+                    </div>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600">
+                        <div>
+                            <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur</span>
+                            <span class="font-semibold text-slate-800 truncate block">${song['Koblakaria'] || '—'}</span>
+                        </div>
+                        <div>
+                            <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Compositeur</span>
+                            <span class="font-semibold text-slate-800 truncate block">${song['Hontzalea'] || '—'}</span>
+                        </div>
+                        <div>
+                            <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Origine</span>
+                            <span class="font-semibold text-slate-800 truncate block">${song['Nonkoa'] || '—'}</span>
+                        </div>
+                        <div>
+                            <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Année</span>
+                            <span class="font-semibold text-slate-800 block">${song['Urtea'] || '—'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${mobileTabsBar}
+
+                <div class="grid grid-cols-1 md:grid-cols-${(hasPhonetic ? 1 : 0) + (hasTranslation ? 1 : 0) + 1} gap-6 flex-1">
+                    <div id="col-lyrics" class="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm block">
+                        <h3 class="hidden md:flex text-xs font-bold text-emerald-800 uppercase tracking-widest mb-4 border-b border-emerald-200 pb-2 justify-between items-center">
+                            <span>Oraiko idazkera</span>
+                            <span class="text-[9px] bg-emerald-200/50 text-emerald-900 px-2 py-0.5 rounded">Basque</span>
+                        </h3>
+                        ${formatLyrics(song['Oraiko idazkera'], false)}
+                    </div>
+
+                    ${hasPhonetic ? `
+                    <div id="col-phonetic" class="bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm hidden md:block">
+                        <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center">
+                            <span>Ahozkatzeko idazkera</span>
+                            <span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique Souletin</span>
+                        </h3>
+                        ${formatLyrics(song['Ahozkatzeko idazkera'], true)}
+                    </div>` : ''}
+
+                    ${hasTranslation ? `
+                    <div id="col-translation" class="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm hidden md:block">
+                        <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center">
+                            <span>Traduction</span>
+                            <span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span>
+                        </h3>
+                        ${formatLyrics(song['Frantsesera ützülpena'], false)}
+                    </div>` : ''}
+                </div>
+
+                ${song['Oharrak'] ? `
+                <div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700">
+                    <h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4>
+                    <p class="text-sm leading-relaxed">${song['Oharrak']}</p>
+                </div>` : ''}
+
+                ${renderAllMedia(song['Audio ütürria'])}
+            `;
+
+            if (window.innerWidth < 768) {
+                switchMobileTab('lyrics');
+            }
+        }
+
+        function goBackToList() {
+            document.getElementById('sidebar').classList.remove('hidden');
+            const detailPanel = document.getElementById('detailPanel');
+            detailPanel.className = "hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex-col justify-center items-center text-slate-400";
+            detailPanel.innerHTML = `
+                <div class="text-center">
+                    <i class="fa-solid fa-music text-6xl mb-4 text-slate-200"></i>
+                    <p class="text-lg font-medium text-slate-500">Sélectionnez une chanson pour l'afficher</p>
+                </div>
+            `;
+            activeSongId = null;
+            renderSongList();
+        }
+
+        function switchMobileTab(tab) {
+            activeMobileTab = tab;
+
+            const colLyrics = document.getElementById('col-lyrics');
+            const colPhonetic = document.getElementById('col-phonetic');
+            const colTranslation = document.getElementById('col-translation');
+
+            const btnLyrics = document.getElementById('tabBtn-lyrics');
+            const btnPhonetic = document.getElementById('tabBtn-phonetic');
+            const btnTranslation = document.getElementById('tabBtn-translation');
+
+            if (colLyrics) colLyrics.className = tab === 'lyrics' ? 'block bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm' : 'hidden md:block';
+            if (colPhonetic) colPhonetic.className = tab === 'phonetic' ? 'block bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm' : 'hidden md:block';
+            if (colTranslation) colTranslation.className = tab === 'translation' ? 'block bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm' : 'hidden md:block';
+
+            if (btnLyrics) btnLyrics.className = tab === 'lyrics' ? 'flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-emerald-800 shadow-sm' : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
+            if (btnPhonetic) btnPhonetic.className = tab === 'phonetic' ? 'flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-amber-800 shadow-sm' : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
+            if (btnTranslation) btnTranslation.className = tab === 'translation' ? 'flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-slate-800 shadow-sm' : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
+        }
+
+        document.getElementById('searchInput').addEventListener('input', filterSongs);
+        document.getElementById('dialectFilter').addEventListener('change', filterSongs);
+
+        loadData();
+    </script>
+</body>
+</html>
