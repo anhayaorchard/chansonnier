@@ -15,7 +15,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; }
+        .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; }
         strong { color: #b45309; font-weight: 800; font-size: 1.05em; } /* Style des accents phonétiques */
         u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } /* Style pour les mélismes */
     </style>
@@ -153,7 +153,6 @@
                     accentText: 'text-teal-700'
                 };
             }
-            // Thème Ardoise par défaut (Fallback)
             return {
                 bg: 'bg-slate-100',
                 text: 'text-slate-800',
@@ -164,7 +163,6 @@
             };
         }
 
-        // Enregistrement de l'installateur d'application
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
@@ -187,7 +185,6 @@
             });
         }
 
-        // Chargement des morceaux
         async function loadData() {
             const cached = localStorage.getItem('chansonnier_songs');
             if (cached) {
@@ -277,7 +274,6 @@
                 
                 let creditsText = '';
                 if (author && composer) {
-                    // Dédoublonnement si l'auteur et le compositeur sont les mêmes
                     if (author.toLowerCase() === composer.toLowerCase()) {
                         creditsText = author;
                     } else {
@@ -334,42 +330,34 @@
             
             let processed = text.toString();
 
-            // 1. Traiter les consonnes accentuées s -> s, z -> z (en gras). Les R accentués (ŕ/ř) restent intacts et normaux (exclus du gras)
+            // 1. Particule négative EZ : Ciblage strict des formes auxiliaires pour éviter les faux-positifs (ex: ezker, ezpata)
             processed = processed
-                .replace(/[śšŝṣ]/g, '<strong>s</strong>')
-                .replace(/[ŚŠŜṢ]/g, '<strong>S</strong>')
-                .replace(/[źžżẓ]/g, '<strong>z</strong>')
-                .replace(/[ŹŽŻẒ]/g, '<strong>Z</strong>');
+                .replace(/\b(ezt)(a|ü|i|o|ie|é)/gi, '<strong>$1</strong>$2')
+                .replace(/\b(ezk)(i|ü)/gi, '<strong>$1</strong>$2')
+                .replace(/\b(etz)(i|a|o)/gi, '<strong>$1</strong>$2')
+                .replace(/\b(eh)(i|ai|u)/gi, '<strong>$1</strong>$2')
+                .replace(/\b(el)(ü|i|a)/gi, '<strong>$1</strong>$2')
+                .replace(/\b(en)(i|ai|ü|ie)/gi, '<strong>$1</strong>$2')
+                .replace(/\b(ezp)(alinba|ait)/gi, '<strong>$1</strong>$2');
 
-            // 2. Mettre en gras double R + H
+            // 2. Digraphes classiques (tx, ts, tz, ll)
+            processed = processed.replace(/(tx|ts|tz|ll)/gi, '<strong>$&</strong>');
+
+            // 3. Double R suivi d'un H (rrh)
             processed = processed.replace(/([rR]{2})([hH])/g, '<strong>$1$2</strong>');
 
-            // 3. Mettre en gras consonne standard + h (ŕh ou řh exclus)
-            processed = processed.replace(/([tTlLnNpPkKrRñÑ])([hH])/g, '<strong>$1$2</strong>');
+            // 4. Consonnes standards + H (th, kh, ph, lh, nh) -> EXCLUT volontairement le r accentué (ŕh/řh)
+            processed = processed.replace(/([tTlLnNpPkKñÑ])([hH])/g, '<strong>$1$2</strong>');
 
-            // 4. Particule négative EZ : contractions au début des mots
-            // EZ + Z (etzira -> e<strong>tz</strong>ira)
-            processed = processed.replace(/\b([eE])([tT][zZ])/g, '$1<strong>$2</strong>');
-            // EZ + G (ezkira -> ez<strong>k</strong>ira)
-            processed = processed.replace(/\b([eE][zZ])([kK])/g, '$1<strong>$2</strong>');
-            // EZ + D (ezta -> ez<strong>t</strong>a)
-            processed = processed.replace(/\b([eE][zZ])([tT])/g, '$1<strong>$2</strong>');
-            // EZ + P/B (ezpalinba -> ez<strong>p</strong>alinba)
-            processed = processed.replace(/\b([eE][zZ])([pP])/g, '$1<strong>$2</strong>');
-            // EZ + H (ehiz -> <strong>e</strong>hiz)
-            processed = processed.replace(/\b([eE])([hH])/g, '<strong>$1</strong>$2');
-            // EZ + L (elüke -> <strong>e</strong>lüke)
-            processed = processed.replace(/\b([eE])([lL])/g, '<strong>$1</strong>$2');
-            // EZ + N (eniz -> <strong>e</strong>niz)
-            processed = processed.replace(/\b([eE])([nN])/g, '<strong>$1</strong>$2');
+            // 5. Lettres simples spécifiques (x, ü, j, ñ et sibilantes accentuées ś, ź, š, ž, ż, ṣ, ẓ)
+            processed = processed.replace(/([xXüÜjJñÑśŚźŹšŠžŽżŻṣṢẓẒ])/g, '<strong>$&</strong>');
 
-            // Nettoyage des balises fortes adjacentes pour un HTML propre
+            // Nettoyage des balises adjacentes pour un HTML propre
             processed = processed.replace(/<\/strong><strong>/g, '');
 
             return processed;
         }
 
-        // --- Remplacement des crochets par des balises de soulignement (mélismes) ---
         function handleMelismas(text) {
             if (!text) return '';
             return text.toString().replace(/\[([^\]]+)\]/g, '<u>$1</u>');
@@ -382,7 +370,6 @@
                 .replace(/>/g, "&gt;");
         }
 
-        // Mise en page fidèle (retours et sauts de lignes conservés)
         function formatLyrics(text, isPhonetic = false) {
             if (!text) return '<p class="text-slate-400 italic">Paroles en cours de saisie...</p>';
             
@@ -398,7 +385,6 @@
                 safeText = highlightPhonetics(safeText);
             }
 
-            // Application des mélismes [crochets] -> souligné (en effaçant les crochets)
             safeText = handleMelismas(safeText);
             
             const paragraphs = safeText.split(/\n\n+/);
@@ -410,6 +396,7 @@
             return `<div class="lyrics-box text-slate-700 leading-relaxed">${htmlParagraphs.join('')}</div>`;
         }
 
+        // Le reste des fonctions (médias, navigation, etc.) reste inchangé et stable
         function ensureAbsoluteUrl(url) {
             if (!url) return '';
             let clean = url.trim();
@@ -494,7 +481,6 @@
                 </div>`;
         }
 
-        // Navigation mobile et bureau
         function selectSong(id) {
             activeSongId = id;
             const song = songs.find(s => s['ID'] == id);
@@ -544,11 +530,11 @@
 
                 <div class="border-b border-slate-200 pb-5 mb-5">
                     <div class="flex flex-wrap items-start justify-between gap-3">
-                        <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900">${song['Izenbürüa']}</h2>
-                        ${dialect ? `<span class="${style.bg} ${style.text} text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${dialect}</span>` : ''}
+                        <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 w-full text-center md:text-left">${song['Izenbürüa']}</h2>
+                        ${dialect ? `<div class="w-full md:w-auto flex justify-center md:justify-start"><span class="${style.bg} ${style.text} text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${dialect}</span></div>` : ''}
                     </div>
                     
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600 text-center md:text-left">
                         <div>
                             <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur</span>
                             <span class="font-semibold text-slate-800 truncate block">${song['Koblakaria'] || '—'}</span>
@@ -618,7 +604,7 @@
         function goBackToList() {
             document.getElementById('sidebar').classList.remove('hidden');
             const detailPanel = document.getElementById('detailPanel');
-            detailPanel.className = "hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex-col justify-center items-center text-slate-400";
+            detailPanel.className = "hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex flex-col justify-center items-center text-slate-400";
             detailPanel.innerHTML = `
                 <div class="text-center">
                     <i class="fa-solid fa-music text-6xl mb-4 text-slate-200"></i>
