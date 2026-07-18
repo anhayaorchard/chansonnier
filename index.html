@@ -234,7 +234,6 @@
             let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let safeText = escapeHtml(normalized);
 
-            // Traitement global préliminaire pour autoriser les balises sur plusieurs lignes
             safeText = safeText.replace(/#([^#]+)#/g, '<span class="refrain-style">$1</span>');
             safeText = safeText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
             safeText = safeText.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
@@ -259,8 +258,6 @@
             const elements = document.querySelectorAll('.verse-line-caesura');
             elements.forEach(el => {
                 el.classList.remove('caesura-fallback');
-                
-                // Si l'élément est dans un onglet caché (hauteur nulle), on attend son affichage
                 if (el.clientHeight === 0) return;
                 
                 const computedStyle = window.getComputedStyle(el);
@@ -270,7 +267,6 @@
                     lineHeight = fontSize * 1.8;
                 }
                 
-                // Si le vers forcé dépasse sur 3 lignes, on annule la césure artificielle
                 if (el.clientHeight > lineHeight * 2.4) {
                     el.classList.add('caesura-fallback');
                 }
@@ -352,20 +348,20 @@
                 </div>
                 ${mobileTabsBar}
                 
-                <!-- Zone de défilement horizontal PC sécurisée à 100% -->
+                <!-- Zone de défilement horizontal PC saine et robuste -->
                 <div class="w-full overflow-x-auto pb-4 mt-2">
-                    <div class="flex flex-col md:flex-row gap-6 md:w-max items-stretch md:items-start">
-                        <div id="col-lyrics" class="w-full md:w-[420px] bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0" style="display: block;">
+                    <div class="flex flex-col md:flex-row gap-6 items-start">
+                        <div id="col-lyrics" class="w-full md:w-[420px] bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0">
                             <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
                             ${formatLyrics(song['Oraiko idazkera'])}
                         </div>
                         ${hasPhonetic ? `
-                        <div id="col-phonetic" class="w-full md:w-[420px] bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm shrink-0" style="display: block;">
+                        <div id="col-phonetic" class="w-full md:w-[420px] bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm shrink-0">
                             <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center"><span>Ahozkatzeko idazkera</span><span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique</span></h3>
                             ${formatLyrics(song['Ahozkatzeko idazkera'])}
                         </div>` : ''}
                         ${hasTranslation ? `
-                        <div id="col-translation" class="w-full md:w-[420px] bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0" style="display: block;">
+                        <div id="col-translation" class="w-full md:w-[420px] bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0">
                             <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Traduction</span><span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span></h3>
                             ${formatLyrics(song['Frantsesera ützülpena'])}
                         </div>` : ''}
@@ -379,10 +375,9 @@
             if (window.innerWidth < 768) {
                 switchMobileTab('lyrics');
             } else {
-                // Sur grand écran, on s'assure que tout est forcé à l'état affiché
                 ['lyrics', 'phonetic', 'translation'].forEach(t => {
                     const el = document.getElementById(`col-${t}`);
-                    if (el) el.style.display = 'block';
+                    if (el) el.classList.remove('hidden');
                 });
                 checkCaesuras();
             }
@@ -400,14 +395,14 @@
             activeMobileTab = tab;
             const isMobile = window.innerWidth < 768;
             
-            // Commutation propre via styles natifs incontournables
             ['lyrics', 'phonetic', 'translation'].forEach(t => {
                 const el = document.getElementById(`col-${t}`);
                 if (!el) return;
                 if (isMobile) {
-                    el.style.display = (tab === t) ? 'block' : 'none';
+                    if (tab === t) el.classList.remove('hidden');
+                    else el.classList.add('hidden');
                 } else {
-                    el.style.display = 'block';
+                    el.classList.remove('hidden');
                 }
             });
             
@@ -417,20 +412,16 @@
             if (btnP) btnP.className = tab === 'phonetic' ? `flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-amber-800 shadow-sm` : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
             if (btnT) btnT.className = tab === 'translation' ? `flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-slate-800 shadow-sm` : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
 
-            // Relancer la vérification sur l'élément rendu visible
             setTimeout(checkCaesuras, 40);
         }
 
-        // Écouteur de redimensionnement intelligent
         window.addEventListener('resize', () => {
-            if (window.innerWidth >= 768) {
-                ['lyrics', 'phonetic', 'translation'].forEach(t => {
-                    const el = document.getElementById(`col-${t}`);
-                    if (el) el.style.display = 'block';
-                });
-            } else {
-                switchMobileTab(activeMobileTab);
-            }
+            const isMobile = window.innerWidth < 768;
+            ['lyrics', 'phonetic', 'translation'].forEach(t => {
+                const el = document.getElementById(`col-${t}`);
+                if (el && !isMobile) el.classList.remove('hidden');
+            });
+            if (isMobile) switchMobileTab(activeMobileTab);
             checkCaesuras();
         });
 
