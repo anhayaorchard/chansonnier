@@ -149,7 +149,6 @@
             if (btnText) btnText.textContent = isClosed ? "Afficher la liste" : "Masquer la liste";
             if (btnIcon) btnIcon.className = isClosed ? "fa-solid fa-angles-right" : "fa-solid fa-angles-left";
             
-            // Recalculer l'espace des césures après la transition d'affichage
             setTimeout(checkCaesuras, 50);
         }
 
@@ -241,17 +240,14 @@
                 const processedLines = lines.map(line => {
                     let hasCaesura = line.includes('/');
                     
-                    // Utilisation de tokens temporaires neutres pour contourner le traitement des fermetures HTML
                     if (hasCaesura) {
                         line = line.replace(/\s*\/\s*/g, '##BR_TOKEN##%%SPACE_TOKEN%%');
                     }
 
-                    // Formatage des balises personnalisées
                     line = line.replace(/#([^#]+)#/gs, '<span class="refrain-style">$1</span>');
                     line = line.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
                     line = line.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
 
-                    // Restitution finale sécurisée de la structure de césure
                     if (hasCaesura) {
                         line = line.replace(/##BR_TOKEN##/g, '<br class="caesura-br">')
                                    .replace(/%%SPACE_TOKEN%%/g, '<span class="caesura-space"> </span>');
@@ -265,16 +261,18 @@
             return `<div class="lyrics-box text-slate-700 leading-relaxed">${htmlParagraphs.join('')}</div>`;
         }
 
-        // Vérification dynamique anti-3 lignes pour les césures
         function checkCaesuras() {
             const elements = document.querySelectorAll('.verse-line-caesura');
             elements.forEach(el => {
-                el.classList.remove('caesura-fallback'); // Réinitialisation pour calcul à froid
+                el.classList.remove('caesura-fallback');
                 
                 const computedStyle = window.getComputedStyle(el);
-                const lineHeight = parseFloat(computedStyle.lineHeight);
+                let lineHeight = parseFloat(computedStyle.lineHeight);
+                if (isNaN(lineHeight)) {
+                    const fontSize = parseFloat(computedStyle.fontSize) || 16;
+                    lineHeight = fontSize * 1.8;
+                }
                 
-                // Si la hauteur dépasse 2,4 fois la hauteur d'une ligne, c'est qu'elle déborde sur une 3e ligne
                 if (el.clientHeight > lineHeight * 2.4) {
                     el.classList.add('caesura-fallback');
                 }
@@ -356,20 +354,20 @@
                 </div>
                 ${mobileTabsBar}
                 
-                <!-- Zone de défilement horizontal sur PC pour préserver la largeur structurelle des colonnes -->
-                <div class="overflow-x-auto w-full flex-1 pb-4">
-                    <div class="flex flex-col md:flex-row gap-6 h-full md:min-w-max items-start">
-                        <div id="col-lyrics" class="w-full md:w-[420px] bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 block">
+                <!-- Zone de défilement horizontal PC saine et libérée des contraintes de hauteur -->
+                <div class="overflow-x-auto w-full pb-4 mt-2">
+                    <div class="flex flex-col md:flex-row gap-6 md:min-w-max items-start">
+                        <div id="col-lyrics" class="w-full md:w-[420px] bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0">
                             <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
                             ${formatLyrics(song['Oraiko idazkera'])}
                         </div>
                         ${hasPhonetic ? `
-                        <div id="col-phonetic" class="w-full md:w-[420px] bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm flex flex-col shrink-0 hidden md:block">
+                        <div id="col-phonetic" class="w-full md:w-[420px] bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm flex flex-col shrink-0 hidden md:flex">
                             <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center"><span>Ahozkatzeko idazkera</span><span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique</span></h3>
                             ${formatLyrics(song['Ahozkatzeko idazkera'])}
                         </div>` : ''}
                         ${hasTranslation ? `
-                        <div id="col-translation" class="w-full md:w-[420px] bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 hidden md:block">
+                        <div id="col-translation" class="w-full md:w-[420px] bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 hidden md:flex">
                             <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Traduction</span><span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span></h3>
                             ${formatLyrics(song['Frantsesera ützülpena'])}
                         </div>` : ''}
@@ -382,7 +380,6 @@
             if (window.innerWidth < 768) {
                 switchMobileTab('lyrics');
             } else {
-                // Lancer l'évaluation immédiate des césures sur PC
                 checkCaesuras();
             }
         }
@@ -396,14 +393,19 @@
         }
 
         function switchMobileTab(tab) {
-            activeMobileTab = tab; const song = songs.find(s => s['ID'] == activeSongId); const style = getDialectStyle(song ? song['Eüskalkia'] : '');
-            ['col-lyrics', 'col-phonetic', 'col-translation'].forEach(id => {
-                const el = document.getElementById(id); if (!el) return;
-                if (id === 'col-lyrics' && tab === 'lyrics') el.className = 'w-full bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 block';
-                else if (id === 'col-phonetic' && tab === 'phonetic') el.className = 'w-full bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm flex flex-col shrink-0 block';
-                else if (id === 'col-translation' && tab === 'translation') el.className = 'w-full bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 block';
-                else el.className = 'hidden md:block';
+            activeMobileTab = tab;
+            
+            // Masquage et affichage propre sans altérer la nature des classes de largeur
+            ['lyrics', 'phonetic', 'translation'].forEach(t => {
+                const el = document.getElementById(`col-${t}`); if (!el) return;
+                if (tab === t) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
             });
+            
+            const song = songs.find(s => s['ID'] == activeSongId); const style = getDialectStyle(song ? song['Eüskalkia'] : '');
             const btnL = document.getElementById('tabBtn-lyrics'), btnP = document.getElementById('tabBtn-phonetic'), btnT = document.getElementById('tabBtn-translation');
             if (btnL) btnL.className = tab === 'lyrics' ? `flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white ${style.accentText} shadow-sm` : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
             if (btnP) btnP.className = tab === 'phonetic' ? `flex-1 text-center py-2 text-xs font-bold rounded-lg bg-white text-amber-800 shadow-sm` : 'flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600';
