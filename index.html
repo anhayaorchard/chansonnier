@@ -4,37 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chansonnier Basque - Euskal Kantutegia</title>
+    <link class="apple-touch-icon" href="icon-192.png">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#065f46">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Kantutegia">
-    <link class="apple-touch-icon" href="icon-192.png">
     
     <!-- Tailwind CSS & FontAwesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; text-wrap: pretty; }
+        .lyrics-box p { margin-bottom: 1.5rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; }
         strong { color: #b45309; font-weight: 800; font-size: 1.05em; font-style: normal; } 
         u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } 
         .refrain-style { display: inline-block; width: 100%; font-style: italic; color: #4b5563; font-weight: 500; } 
         .refrain-style strong { font-style: italic; }
 
-        /* Gestion intelligente de la césure / */
+        /* Structure de césure par défaut */
         .caesura-br { display: block; }
         .caesura-space { display: none; }
-        
-        @media (min-width: 768px) {
-            /* Si la barre latérale est masquée sur PC, on désactive la césure pour gagner de la place */
-            body.sidebar-closed .caesura-br { display: none; }
-            body.sidebar-closed .caesura-space { display: inline; }
-            
-            /* Si la barre est ouverte ET qu'il y a 3 colonnes, on réduit légèrement la police pour éviter la triple ligne */
-            body:not(.sidebar-closed) .grid-cols-3 .lyrics-box p {
-                font-size: 0.92rem;
-            }
-        }
+
+        /* Règle de repli si le vers dépasse 2 lignes (géré par JS) */
+        .caesura-fallback .caesura-br { display: none !important; }
+        .caesura-fallback .caesura-space { display: inline !important; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
@@ -45,7 +38,6 @@
             <h1 class="text-lg md:text-2xl font-bold tracking-wide flex items-center gap-2">
                 <i class="fa-solid fa-music text-emerald-300"></i> Chansonnier Basque
             </h1>
-            <!-- Bouton pour masquer la barre latérale (Desktop uniquement) -->
             <button id="toggleSidebarBtn" onclick="toggleSidebar()" class="hidden md:flex items-center gap-2 bg-emerald-900/60 hover:bg-emerald-950 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-700/50 transition">
                 <i id="toggleSidebarIcon" class="fa-solid fa-angles-left"></i> <span id="toggleSidebarText">Masquer la liste</span>
             </button>
@@ -64,7 +56,7 @@
     <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
         <!-- BARRE LATÉRALE -->
-        <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20">
+        <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20 shrink-0">
             <div class="p-4 border-b border-slate-200 bg-slate-50/50 space-y-3">
                 <div class="relative">
                     <input type="text" id="searchInput" placeholder="Rechercher un chant, auteur..." 
@@ -146,7 +138,6 @@
             window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
         }
 
-        // Gestion du masquage de la liste sur PC
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const btnText = document.getElementById('toggleSidebarText');
@@ -154,10 +145,12 @@
             
             sidebar.classList.toggle('md:hidden');
             const isClosed = sidebar.classList.contains('md:hidden');
-            document.body.classList.toggle('sidebar-closed', isClosed);
             
             if (btnText) btnText.textContent = isClosed ? "Afficher la liste" : "Masquer la liste";
             if (btnIcon) btnIcon.className = isClosed ? "fa-solid fa-angles-right" : "fa-solid fa-angles-left";
+            
+            // Recalculer l'espace des césures après la transition d'affichage
+            setTimeout(checkCaesuras, 50);
         }
 
         async function loadData() {
@@ -232,7 +225,6 @@
             }));
         }
 
-        // --- Système de Formatage Manuel par Balises ---
         function escapeHtml(text) {
             return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
@@ -243,26 +235,50 @@
             let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let safeText = escapeHtml(normalized);
 
-            // Remplacement du / par une structure de césure HTML gérée dynamiquement en CSS
-            safeText = safeText.replace(/\s*\/\s*/g, '<span class="caesura-space"> </span><br class="caesura-br">');
-
-            // 1. Refrains entre # ... #
-            safeText = safeText.replace(/#([^#]+)#/gs, '<span class="refrain-style">$1</span>');
-
-            // 2. Phonétique ou mise en valeur entre * ... *
-            safeText = safeText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
-
-            // 3. Mélismes entre [ ... ]
-            safeText = safeText.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
-            
-            // Centrage structurel par paragraphe
             const paragraphs = safeText.split(/\n\n+/);
             const htmlParagraphs = paragraphs.map(p => {
                 const lines = p.split('\n');
-                return `<p>${lines.join('<br>')}</p>`;
+                const processedLines = lines.map(line => {
+                    let hasCaesura = line.includes('/');
+                    
+                    // Utilisation de tokens temporaires neutres pour contourner le traitement des fermetures HTML
+                    if (hasCaesura) {
+                        line = line.replace(/\s*\/\s*/g, '##BR_TOKEN##%%SPACE_TOKEN%%');
+                    }
+
+                    // Formatage des balises personnalisées
+                    line = line.replace(/#([^#]+)#/gs, '<span class="refrain-style">$1</span>');
+                    line = line.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+                    line = line.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
+
+                    // Restitution finale sécurisée de la structure de césure
+                    if (hasCaesura) {
+                        line = line.replace(/##BR_TOKEN##/g, '<br class="caesura-br">')
+                                   .replace(/%%SPACE_TOKEN%%/g, '<span class="caesura-space"> </span>');
+                        return `<span class="verse-line-caesura block">${line}</span>`;
+                    }
+                    return line;
+                });
+                return `<p>${processedLines.join('<br>')}</p>`;
             });
             
             return `<div class="lyrics-box text-slate-700 leading-relaxed">${htmlParagraphs.join('')}</div>`;
+        }
+
+        // Vérification dynamique anti-3 lignes pour les césures
+        function checkCaesuras() {
+            const elements = document.querySelectorAll('.verse-line-caesura');
+            elements.forEach(el => {
+                el.classList.remove('caesura-fallback'); // Réinitialisation pour calcul à froid
+                
+                const computedStyle = window.getComputedStyle(el);
+                const lineHeight = parseFloat(computedStyle.lineHeight);
+                
+                // Si la hauteur dépasse 2,4 fois la hauteur d'une ligne, c'est qu'elle déborde sur une 3e ligne
+                if (el.clientHeight > lineHeight * 2.4) {
+                    el.classList.add('caesura-fallback');
+                }
+            });
         }
 
         function ensureAbsoluteUrl(url) {
@@ -318,7 +334,7 @@
             let mobileTabsBar = '';
             if (hasPhonetic || hasTranslation) {
                 mobileTabsBar = `
-                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl">
+                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl shrink-0">
                         <button id="tabBtn-lyrics" onclick="switchMobileTab('lyrics')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg transition duration-200 bg-white ${style.accentText} shadow-sm">Original</button>
                         ${hasPhonetic ? `<button id="tabBtn-phonetic" onclick="switchMobileTab('phonetic')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">Phonétique</button>` : ''}
                         ${hasTranslation ? `<button id="tabBtn-translation" onclick="switchMobileTab('translation')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">Traduction</button>` : ''}
@@ -326,10 +342,10 @@
             }
 
             detailPanel.innerHTML = `
-                <div class="flex items-center justify-between md:hidden mb-4">
+                <div class="flex items-center justify-between md:hidden mb-4 shrink-0">
                     <button onclick="goBackToList()" class="flex items-center gap-1 ${style.text} font-extrabold text-sm py-2 px-3 ${style.lightBg} rounded-lg transition"><i class="fa-solid fa-arrow-left"></i> Retour</button>
                 </div>
-                <div class="border-b border-slate-200 pb-5 mb-5">
+                <div class="border-b border-slate-200 pb-5 mb-5 shrink-0">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 w-full text-center md:text-left">${song['Izenbürüa']}</h2>
                     ${dialect ? `<div class="w-full md:w-auto flex justify-center md:justify-start mt-2"><span class="${style.bg} ${style.text} text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${dialect}</span></div>` : ''}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600 text-center md:text-left">
@@ -339,26 +355,36 @@
                     </div>
                 </div>
                 ${mobileTabsBar}
-                <div class="grid grid-cols-1 md:grid-cols-${(hasPhonetic ? 1 : 0) + (hasTranslation ? 1 : 0) + 1} gap-6 flex-1">
-                    <div id="col-lyrics" class="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm block">
-                        <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
-                        ${formatLyrics(song['Oraiko idazkera'])}
+                
+                <!-- Zone de défilement horizontal sur PC pour préserver la largeur structurelle des colonnes -->
+                <div class="overflow-x-auto w-full flex-1 pb-4">
+                    <div class="flex flex-col md:flex-row gap-6 h-full md:min-w-max items-start">
+                        <div id="col-lyrics" class="w-full md:w-[420px] bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 block">
+                            <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
+                            ${formatLyrics(song['Oraiko idazkera'])}
+                        </div>
+                        ${hasPhonetic ? `
+                        <div id="col-phonetic" class="w-full md:w-[420px] bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm flex flex-col shrink-0 hidden md:block">
+                            <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center"><span>Ahozkatzeko idazkera</span><span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique</span></h3>
+                            ${formatLyrics(song['Ahozkatzeko idazkera'])}
+                        </div>` : ''}
+                        ${hasTranslation ? `
+                        <div id="col-translation" class="w-full md:w-[420px] bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 hidden md:block">
+                            <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Traduction</span><span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span></h3>
+                            ${formatLyrics(song['Frantsesera ützülpena'])}
+                        </div>` : ''}
                     </div>
-                    ${hasPhonetic ? `
-                    <div id="col-phonetic" class="bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm hidden md:block">
-                        <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center"><span>Ahozkatzeko idazkera</span><span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique</span></h3>
-                        ${formatLyrics(song['Ahozkatzeko idazkera'])}
-                    </div>` : ''}
-                    ${hasTranslation ? `
-                    <div id="col-translation" class="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm hidden md:block">
-                        <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center"><span>Traduction</span><span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span></h3>
-                        ${formatLyrics(song['Frantsesera ützülpena'])}
-                    </div>` : ''}
                 </div>
-                ${song['Oharrak'] ? `<div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700"><h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4><p class="text-sm leading-relaxed">${song['Oharrak']}</p></div>` : ''}
+
+                ${song['Oharrak'] ? `<div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700 shrink-0"><h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4><p class="text-sm leading-relaxed">${song['Oharrak']}</p></div>` : ''}
                 ${renderAllMedia(song['Audio ütürria'])}
             `;
-            if (window.innerWidth < 768) switchMobileTab('lyrics');
+            if (window.innerWidth < 768) {
+                switchMobileTab('lyrics');
+            } else {
+                // Lancer l'évaluation immédiate des césures sur PC
+                checkCaesuras();
+            }
         }
 
         function goBackToList() {
@@ -373,9 +399,9 @@
             activeMobileTab = tab; const song = songs.find(s => s['ID'] == activeSongId); const style = getDialectStyle(song ? song['Eüskalkia'] : '');
             ['col-lyrics', 'col-phonetic', 'col-translation'].forEach(id => {
                 const el = document.getElementById(id); if (!el) return;
-                if (id === 'col-lyrics' && tab === 'lyrics') el.className = 'block bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm';
-                else if (id === 'col-phonetic' && tab === 'phonetic') el.className = 'block bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm';
-                else if (id === 'col-translation' && tab === 'translation') el.className = 'block bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm';
+                if (id === 'col-lyrics' && tab === 'lyrics') el.className = 'w-full bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 block';
+                else if (id === 'col-phonetic' && tab === 'phonetic') el.className = 'w-full bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm flex flex-col shrink-0 block';
+                else if (id === 'col-translation' && tab === 'translation') el.className = 'w-full bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col shrink-0 block';
                 else el.className = 'hidden md:block';
             });
             const btnL = document.getElementById('tabBtn-lyrics'), btnP = document.getElementById('tabBtn-phonetic'), btnT = document.getElementById('tabBtn-translation');
@@ -386,6 +412,7 @@
 
         document.getElementById('searchInput').addEventListener('input', filterSongs);
         document.getElementById('dialectFilter').addEventListener('change', filterSongs);
+        window.addEventListener('resize', checkCaesuras);
         loadData();
     </script>
 </body>
