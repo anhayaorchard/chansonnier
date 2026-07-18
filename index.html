@@ -16,8 +16,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; }
-        strong { color: #b45309; font-weight: 800; font-size: 1.05em; } /* Style des accents phonétiques générés par le Diff */
-        u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } /* Style pour les mélismes */
+        strong { color: #b45309; font-weight: 800; font-size: 1.05em; } 
+        u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } 
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
@@ -85,21 +85,32 @@
 
         function getDialectStyle(dialect) {
             const d = (dialect || '').toLowerCase().trim();
+            
+            // Souletin (Zuberera / Xiberotarrak)
             if (d.includes('soul') || d.includes('zuber') || d.includes('xiber')) {
                 return { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-600', lightBg: 'bg-emerald-50/40', hoverBg: 'hover:bg-emerald-50/50', accentText: 'text-emerald-700' };
             }
-            if (d.includes('navarro-lab') || d.includes('nafar-lap') || d.includes('labourd') || d.includes('lapurt')) {
+            // Labourdin (Lapurtera)
+            if (d.includes('labourd') || d.includes('lapurt')) {
                 return { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-600', lightBg: 'bg-blue-50/40', hoverBg: 'hover:bg-blue-50/50', accentText: 'text-blue-700' };
             }
+            // Bas-Navarrais (Behe nafarrera)
+            if (d.includes('bas-nav') || d.includes('behe naf')) {
+                return { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-600', lightBg: 'bg-purple-50/40', hoverBg: 'hover:bg-purple-50/50', accentText: 'text-purple-700' };
+            }
+            // Navarrais général ou autre Nafar
             if (d.includes('navar') || d.includes('nafar')) {
                 return { bg: 'bg-violet-100', text: 'text-violet-800', border: 'border-violet-600', lightBg: 'bg-violet-50/40', hoverBg: 'hover:bg-violet-50/50', accentText: 'text-violet-700' };
             }
+            // Gipuzkoan (Gipuzkera)
             if (d.includes('gipuz')) {
                 return { bg: 'bg-rose-100', text: 'text-rose-800', border: 'border-rose-600', lightBg: 'bg-rose-50/40', hoverBg: 'hover:bg-rose-50/50', accentText: 'text-rose-700' };
             }
+            // Biscayen (Bizkaiera)
             if (d.includes('bizk') || d.includes('bisc')) {
                 return { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-600', lightBg: 'bg-amber-50/40', hoverBg: 'hover:bg-amber-50/50', accentText: 'text-amber-700' };
             }
+            // Batua (Unifié)
             if (d.includes('batua') || d.includes('commun') || d.includes('unifié')) {
                 return { bg: 'bg-teal-100', text: 'text-teal-800', border: 'border-teal-600', lightBg: 'bg-teal-50/40', hoverBg: 'hover:bg-teal-50/50', accentText: 'text-teal-700' };
             }
@@ -234,7 +245,7 @@
             renderSongList(filtered);
         }
 
-        // --- Algorithme d'alignement de chaînes (Diff) ---
+        // --- Algorithme d'alignement enrichi (Diff + Règles de Post-traitement) ---
         function diffLine(orig, phon) {
             const m = orig.length;
             const n = phon.length;
@@ -259,21 +270,66 @@
                 if (i > 0 && j > 0 && orig[i - 1].toLowerCase() === phon[j - 1].toLowerCase()) {
                     alignment.push({ char: phon[j - 1], bold: false });
                     i--; j--;
-                } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) { // Substitution
+                } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) { 
                     const c = phon[j - 1];
-                    const isProtectedR = ['ŕ', 'ř', 'Ŕ', 'Ř'].includes(c);
-                    alignment.push({ char: c, bold: (c !== ' ' && !isProtectedR) });
+                    alignment.push({ char: c, bold: (c !== ' ') });
                     i--; j--;
-                } else if (j > 0 && (i === 0 || dp[i][j] === dp[i][j - 1] + 1)) { // Insertion
+                } else if (j > 0 && (i === 0 || dp[i][j] === dp[i][j - 1] + 1)) { 
                     const c = phon[j - 1];
-                    const isProtectedR = ['ŕ', 'ř', 'Ŕ', 'Ř'].includes(c);
-                    alignment.push({ char: c, bold: (c !== ' ' && !isProtectedR) });
+                    alignment.push({ char: c, bold: (c !== ' ') });
                     j--;
-                } else { i--; } // Suppression dans l'original
+                } else { i--; } 
             }
             
             alignment.reverse();
             
+            // --- PASSE DE POST-TRAITEMENT DES RÈGLES PHONÉTIQUES ---
+            
+            // 1. Protection absolue : Immuniser les parenthèses et les R accentués
+            for (let k = 0; k < alignment.length; k++) {
+                const c = alignment[k].char;
+                if (c === '(' || c === ')' || ['ŕ', 'ř', 'Ŕ', 'Ř'].includes(c)) {
+                    alignment[k].bold = false;
+                }
+            }
+            
+            // 2. Règle structurelle : Séquence "il" -> "ll" (on propage le gras sur tout le groupe "ll")
+            for (let k = 0; k < alignment.length - 1; k++) {
+                if (alignment[k].char.toLowerCase() === 'l' && alignment[k+1].char.toLowerCase() === 'l') {
+                    if (alignment[k].bold || alignment[k+1].bold) {
+                        alignment[k].bold = true;
+                        alignment[k+1].bold = true;
+                    }
+                }
+            }
+            
+            // 3. Règle des aspirations standard (th, kh, ph, lh, nh) : Tout le digraphe passe en gras si l'un bouge
+            for (let k = 0; k < alignment.length - 1; k++) {
+                const c1 = alignment[k].char.toLowerCase();
+                const c2 = alignment[k+1].char.toLowerCase();
+                if (['t', 'k', 'p', 'l', 'n'].includes(c1) && c2 === 'h') {
+                    if (alignment[k].bold || alignment[k+1].bold) {
+                        alignment[k].bold = true;
+                        alignment[k+1].bold = true;
+                    }
+                }
+            }
+            
+            // 4. Cas particulier : Double R aspiré "rrh"
+            for (let k = 0; k < alignment.length - 2; k++) {
+                const c1 = alignment[k].char.toLowerCase();
+                const c2 = alignment[k+1].char.toLowerCase();
+                const c3 = alignment[k+2].char.toLowerCase();
+                if (c1 === 'r' && c2 === 'r' && c3 === 'h') {
+                    if (alignment[k].bold || alignment[k+1].bold || alignment[k+2].bold) {
+                        alignment[k].bold = true;
+                        alignment[k+1].bold = true;
+                        alignment[k+2].bold = true;
+                    }
+                }
+            }
+            
+            // Construction finale de la chaîne HTML sécurisée
             let html = "";
             let inBold = false;
             for (const item of alignment) {
@@ -295,6 +351,7 @@
             return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
 
+        // Système d'affichage ligne par ligne centré
         function formatLyrics(text, origText = null) {
             if (!text) return '<p class="text-slate-400 italic">Paroles en cours de saisie...</p>';
             
@@ -382,6 +439,29 @@
             const hasPhonetic = !!song['Ahozkatzeko idazkera'];
             const hasTranslation = !!song['Frantsesera ützülpena'];
 
+            // Traitement modulaire Auteur (Koblakaria) & Compositeur (Hontzalea)
+            const author = song['Koblakaria'] ? song['Koblakaria'].toString().trim() : '';
+            const composer = song['Hontzalea'] ? song['Hontzalea'].toString().trim() : '';
+            let authorComposerHtml = '';
+
+            if (author && composer && author.toLowerCase() === composer.toLowerCase()) {
+                authorComposerHtml = `
+                    <div class="col-span-2 sm:col-span-2">
+                        <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur & Compositeur</span>
+                        <span class="font-semibold text-slate-800 truncate block">${author}</span>
+                    </div>`;
+            } else {
+                authorComposerHtml = `
+                    <div>
+                        <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur (Koblakaria)</span>
+                        <span class="font-semibold text-slate-800 truncate block">${author || '—'}</span>
+                    </div>
+                    <div>
+                        <span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Compositeur (Hontzalea)</span>
+                        <span class="font-semibold text-slate-800 truncate block">${composer || '—'}</span>
+                    </div>`;
+            }
+
             let mobileTabsBar = '';
             if (hasPhonetic || hasTranslation) {
                 mobileTabsBar = `
@@ -399,8 +479,9 @@
                 <div class="border-b border-slate-200 pb-5 mb-5">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 w-full text-center md:text-left">${song['Izenbürüa']}</h2>
                     ${dialect ? `<div class="w-full md:w-auto flex justify-center md:justify-start mt-2"><span class="${style.bg} ${style.text} text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${dialect}</span></div>` : ''}
+                    
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600 text-center md:text-left">
-                        <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur / Comp.</span><span class="font-semibold text-slate-800 truncate block">${song['Koblakaria'] || song['Hontzalea'] || '—'}</span></div>
+                        ${authorComposerHtml}
                         <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Origine</span><span class="font-semibold text-slate-800 truncate block">${song['Nonkoa'] || '—'}</span></div>
                         <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Année</span><span class="font-semibold text-slate-800 block">${song['Urtea'] || '—'}</span></div>
                     </div>
