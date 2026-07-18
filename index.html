@@ -16,9 +16,12 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; }
-        strong { color: #b45309; font-weight: 800; font-size: 1.05em; font-style: normal; } /* Style des phonétiques entre * */
+        strong { color: #b45309; font-weight: 800; font-size: 1.05em; font-style: normal; } /* Style standard des phonétiques */
         u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } /* Style des mélismes [ ] */
-        .refrain-style { display: inline-block; width: 100%; font-style: italic; color: #4b5563; font-weight: 500; } /* Style des refrains entre # */
+        .refrain-style { display: inline-block; width: 100%; font-style: italic; color: #4b5563; font-weight: 500; } /* Style du refrain */
+        
+        /* Règle spécifique : si un élément phonétique (*) est DANS un refrain (#), il devient AUSSI italique */
+        .refrain-style strong { font-style: italic; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
@@ -207,7 +210,7 @@
             let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let safeText = escapeHtml(normalized);
 
-            // 1. Refrains entre # ... # (le drapeau 's' permet de capturer sur plusieurs lignes si besoin)
+            // 1. Refrains entre # ... #
             safeText = safeText.replace(/#([^#]+)#/gs, '<span class="refrain-style">$1</span>');
 
             // 2. Phonétique ou mise en valeur entre * ... *
@@ -265,7 +268,6 @@
             const dialect = song['Eüskalkia'] || ''; const style = getDialectStyle(dialect);
             const hasPhonetic = !!song['Ahozkatzeko idazkera']; const hasTranslation = !!song['Frantsesera ützülpena'];
 
-            // Affichage séparé Auteur et Compositeur si différents
             const author = song['Koblakaria'] ? song['Koblakaria'].toString().trim() : '';
             const composer = song['Hontzalea'] ? song['Hontzalea'].toString().trim() : '';
             let creditBlock = '';
