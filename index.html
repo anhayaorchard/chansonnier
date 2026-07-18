@@ -283,9 +283,11 @@
                         let cleanLine = line.replace(/\s*(?<!<)\/\s*/g, '<br class="caesura-br"><span class="caesura-space"> </span>');
                         return `<span class="verse-line-caesura block caesura-none">${cleanLine}</span>`;
                     }
-                    return line;
+                    // Pour éviter les sauts de lignes doubles causés par l'association block + <br>,
+                    // on encapsule chaque vers standard dans son propre bloc propre sans balise <br> intercalée.
+                    return `<span class="block">${line}</span>`;
                 });
-                return `<p>${processedLines.join('<br>')}</p>`;
+                return `<p>${processedLines.join('')}</p>`;
             });
             
             return `<div class="lyrics-box text-slate-700">${htmlParagraphs.join('')}</div>`;
