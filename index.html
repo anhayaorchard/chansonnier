@@ -15,20 +15,41 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; }
+        .lyrics-box p { margin-bottom: 1.25rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; text-wrap: pretty; }
         strong { color: #b45309; font-weight: 800; font-size: 1.05em; font-style: normal; } 
         u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } 
         .refrain-style { display: inline-block; width: 100%; font-style: italic; color: #4b5563; font-weight: 500; } 
         .refrain-style strong { font-style: italic; }
+
+        /* Gestion intelligente de la césure / */
+        .caesura-br { display: block; }
+        .caesura-space { display: none; }
+        
+        @media (min-width: 768px) {
+            /* Si la barre latérale est masquée sur PC, on désactive la césure pour gagner de la place */
+            body.sidebar-closed .caesura-br { display: none; }
+            body.sidebar-closed .caesura-space { display: inline; }
+            
+            /* Si la barre est ouverte ET qu'il y a 3 colonnes, on réduit légèrement la police pour éviter la triple ligne */
+            body:not(.sidebar-closed) .grid-cols-3 .lyrics-box p {
+                font-size: 0.92rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
 
     <!-- En-tête -->
     <header class="bg-emerald-800 text-white shadow-md p-4 flex items-center justify-between z-10 shrink-0">
-        <h1 class="text-lg md:text-2xl font-bold tracking-wide flex items-center gap-2">
-            <i class="fa-solid fa-music text-emerald-300"></i> Chansonnier Basque
-        </h1>
+        <div class="flex items-center gap-4">
+            <h1 class="text-lg md:text-2xl font-bold tracking-wide flex items-center gap-2">
+                <i class="fa-solid fa-music text-emerald-300"></i> Chansonnier Basque
+            </h1>
+            <!-- Bouton pour masquer la barre latérale (Desktop uniquement) -->
+            <button id="toggleSidebarBtn" onclick="toggleSidebar()" class="hidden md:flex items-center gap-2 bg-emerald-900/60 hover:bg-emerald-950 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-700/50 transition">
+                <i id="toggleSidebarIcon" class="fa-solid fa-angles-left"></i> <span id="toggleSidebarText">Masquer la liste</span>
+            </button>
+        </div>
         <div class="flex items-center gap-3">
             <span id="connectionStatus" class="text-[10px] md:text-xs bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-600/30">
                 <i class="fa-solid fa-sync fa-spin mr-1 text-emerald-400"></i> Chargement...
@@ -125,6 +146,20 @@
             window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
         }
 
+        // Gestion du masquage de la liste sur PC
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const btnText = document.getElementById('toggleSidebarText');
+            const btnIcon = document.getElementById('toggleSidebarIcon');
+            
+            sidebar.classList.toggle('md:hidden');
+            const isClosed = sidebar.classList.contains('md:hidden');
+            document.body.classList.toggle('sidebar-closed', isClosed);
+            
+            if (btnText) btnText.textContent = isClosed ? "Afficher la liste" : "Masquer la liste";
+            if (btnIcon) btnIcon.className = isClosed ? "fa-solid fa-angles-right" : "fa-solid fa-angles-left";
+        }
+
         async function loadData() {
             const cached = localStorage.getItem('chansonnier_songs');
             if (cached) {
@@ -208,8 +243,8 @@
             let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let safeText = escapeHtml(normalized);
 
-            // CORRECTION : Le "/" est traité EN PREMIER, avant l'injection de balises HTML contenant des slashes (comme </span>)
-            safeText = safeText.replace(/\s*\/\s*/g, '<span class="hidden md:inline"> </span><br class="block md:hidden">');
+            // Remplacement du / par une structure de césure HTML gérée dynamiquement en CSS
+            safeText = safeText.replace(/\s*\/\s*/g, '<span class="caesura-space"> </span><br class="caesura-br">');
 
             // 1. Refrains entre # ... #
             safeText = safeText.replace(/#([^#]+)#/gs, '<span class="refrain-style">$1</span>');
