@@ -38,10 +38,10 @@
         .caesura-fallback .caesura-space { display: inline; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
 
     <!-- En-tête -->
-    <header class="bg-emerald-800 text-white shadow-md p-4 flex items-center justify-between z-10 shrink-0">
+    <header class="bg-emerald-800 text-white shadow-md p-4 flex items-center justify-between z-10 shrink-0 select-none">
         <div class="flex items-center gap-4">
             <h1 class="text-lg md:text-2xl font-bold tracking-wide flex items-center gap-2">
                 <i class="fa-solid fa-music text-emerald-300"></i> Chansonnier Basque
@@ -64,7 +64,7 @@
     <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
         <!-- BARRE LATÉRALE -->
-        <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20 shrink-0">
+        <aside id="sidebar" class="w-full md:w-80 lg:w-96 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20 shrink-0 select-none">
             <div class="p-4 border-b border-slate-200 bg-slate-50/50 space-y-3">
                 <div class="relative">
                     <input type="text" id="searchInput" placeholder="Rechercher un chant, auteur..." 
@@ -86,7 +86,7 @@
         </aside>
 
         <!-- PANNEAU DÉTAIL -->
-        <main id="detailPanel" class="hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex flex-col justify-center items-center text-slate-400">
+        <main id="detailPanel" class="hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex flex-col justify-center items-center text-slate-400 select-none">
             <div class="text-center">
                 <i class="fa-solid fa-music text-6xl mb-4 text-slate-200"></i>
                 <p class="text-lg font-medium text-slate-500">Sélectionnez une chanson pour l'afficher</p>
@@ -267,49 +267,57 @@
         }
 
         function formatLyrics(text) {
-            if (!text || text.toString().trim() === '') return '<p class="text-slate-400 italic">Paroles en cours de saisie...</p>';
+            if (!text || text.toString().trim() === '') return '<p class="text-slate-400 italic select-none">Paroles en cours de saisie...</p>';
             
             let safeText = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-            // ÉTAPE 1 globalisée : Traiter le refrain multi-lignes #...# en amont
-            // On remplace les dièses par un conteneur global qui garde TOUT le texte ciblé au statut de refrain
-            safeText = safeText.replace(/#([^#]+)#/g, (match, p1) => {
-                return `[REFRAIN_START]${p1}[REFRAIN_END]`;
-            });
+            // ÉTAPE 1 : Identification et isolation ciblée des zones de refrains (#...#) sans injecter de balises intermédiaires textuelles
+            // On sépare temporairement le texte selon les dièses pour poser notre logique structurelle
+            const parts = safeText.split('#');
+            let builtParagraphsText = '';
+            
+            for (let i = 0; i < parts.length; i++) {
+                if (i % 2 === 1) {
+                    // C'est un bloc refrain. On marque chaque ligne avec un préfixe invisible à la césure pour s'en souvenir plus tard
+                    const lines = parts[i].split('\n');
+                    const refrainMarked = lines.map(l => `::REFRAIN_LINE::${l}`).join('\n');
+                    builtParagraphsText += refrainMarked;
+                } else {
+                    builtParagraphsText += parts[i];
+                }
+            }
 
-            // ÉTAPE 2 : Traiter les autres syntaxes de style standard
-            safeText = safeText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); 
-            safeText = safeText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
-            safeText = safeText.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
+            // ÉTAPE 2 : Traitement des autres styles HTML standards
+            builtParagraphsText = builtParagraphsText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); 
+            builtParagraphsText = builtParagraphsText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+            builtParagraphsText = builtParagraphsText.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
 
-            const paragraphs = safeText.split(/\n\n+/);
+            const paragraphs = builtParagraphsText.split(/\n\n+/);
             const htmlParagraphs = paragraphs.map(p => {
                 const lines = p.split('\n');
-                let inRefrainBlock = false;
 
                 const processedLines = lines.map(line => {
                     let currentLine = line;
-                    
-                    // Flags d'ouverture/fermeture du bloc refrain global
-                    if (currentLine.includes('[REFRAIN_START]')) { inRefrainBlock = true; currentLine = currentLine.replace('[REFRAIN_START]', ''); }
-                    let endsRefrainThisLine = false;
-                    if (currentLine.includes('[REFRAIN_END]')) { endsRefrainThisLine = true; currentLine = currentLine.replace('[REFRAIN_END]', ''); }
+                    let isRefrainLine = false;
 
-                    // ÉTAPE 3 : Détection précise de la césure / (Même dans le refrain)
+                    // Détection et retrait propre du marqueur interne de refrain
+                    if (currentLine.startsWith('::REFRAIN_LINE::')) {
+                        isRefrainLine = true;
+                        currentLine = currentLine.replace('::REFRAIN_LINE::', '');
+                    }
+
+                    // ÉTAPE 3 : Détection précise de la césure / (Même dans le refrain ré-isolé)
                     let isCaesura = /(?<!<)\//.test(currentLine);
                     if (isCaesura) {
                         currentLine = currentLine.replace(/\s*(?<!<)\/\s*/g, '<br class="caesura-br"><span class="caesura-space"> </span>');
                     }
 
-                    // Encapsulation de style dynamique si nous nous trouvons dans un refrain
-                    if (inRefrainBlock || endsRefrainThisLine) {
+                    // Application propre des styles de refrain s'il y a lieu
+                    if (isRefrainLine) {
                         currentLine = `<span class="refrain-style">${currentLine}</span>`;
                     }
 
-                    // Si la ligne se termine, on désactive le drapeau pour la ligne suivante
-                    if (endsRefrainThisLine) inRefrainBlock = false;
-
-                    // Montage final de la ligne structurée
+                    // Rendu final du bloc de ligne (Césure dynamique ou Vers standard)
                     if (isCaesura) {
                         return `<span class="verse-line-caesura block caesura-none">${currentLine}</span>`;
                     }
@@ -318,7 +326,7 @@
                 return `<p>${processedLines.join('')}</p>`;
             });
             
-            return `<div class="lyrics-box text-slate-700">${htmlParagraphs.join('')}</div>`;
+            return `<div class="lyrics-box text-slate-700 select-text">${htmlParagraphs.join('')}</div>`;
         }
 
         function checkCaesuras() {
@@ -412,7 +420,7 @@
                 }
             });
             if (!embedHtml && !audioHtml && !externalLinksHtml) return '';
-            return `<div class="mt-8 border-t border-slate-200 pt-6"><h4 class="text-sm font-extrabold text-slate-800 mb-4"><i class="fa-solid fa-play text-emerald-700 mr-2"></i>Interprétation & Enregistrements</h4>${embedHtml}${audioHtml}${externalLinksHtml ? `<div class="mt-2"><div class="flex flex-wrap gap-2">${externalLinksHtml}</div></div>` : ''}</div>`;
+            return `<div class="mt-8 border-t border-slate-200 pt-6 select-none"><h4 class="text-sm font-extrabold text-slate-800 mb-4"><i class="fa-solid fa-play text-emerald-700 mr-2"></i>Interprétation & Enregistrements</h4>${embedHtml}${audioHtml}${externalLinksHtml ? `<div class="mt-2"><div class="flex flex-wrap gap-2">${externalLinksHtml}</div></div>` : ''}</div>`;
         }
 
         function selectSong(id) {
@@ -420,7 +428,7 @@
             renderSongList(); const detailPanel = document.getElementById('detailPanel');
             if (window.innerWidth < 768) document.getElementById('sidebar').classList.add('hidden');
             
-            detailPanel.className = "flex-1 bg-white overflow-y-auto p-4 md:p-8 block";
+            detailPanel.className = "flex-1 bg-white overflow-y-auto p-4 md:p-8 block select-text";
             
             const dialect = getSongField(song, 'Eüskalkia'); const style = getDialectStyle(dialect);
             
@@ -434,17 +442,17 @@
             const composer = getSongField(song, 'Hontzalea').toString().trim();
             let creditBlock = '';
             if (author && composer && author.toLowerCase() === composer.toLowerCase()) {
-                creditBlock = `<div class="col-span-2"><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur & Compositeur</span><span class="font-semibold text-slate-800 truncate block">${author}</span></div>`;
+                creditBlock = `<div class="col-span-2 select-none"><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Auteur & Compositeur</span><span class="font-semibold text-slate-800 truncate block">${author}</span></div>`;
             } else {
                 creditBlock = `
-                    <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Parolier (Koblakaria)</span><span class="font-semibold text-slate-800 truncate block">${author || '—'}</span></div>
-                    <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Compositeur (Hontzalea)</span><span class="font-semibold text-slate-800 truncate block">${composer || '—'}</span></div>`;
+                    <div class="select-none"><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Parolier (Koblakaria)</span><span class="font-semibold text-slate-800 truncate block">${author || '—'}</span></div>
+                    <div class="select-none"><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Compositeur (Hontzalea)</span><span class="font-semibold text-slate-800 truncate block">${composer || '—'}</span></div>`;
             }
 
             let mobileTabsBar = '';
             if (hasPhonetic || hasTranslation) {
                 mobileTabsBar = `
-                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl">
+                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl select-none">
                         <button id="tabBtn-lyrics" onclick="switchMobileTab('lyrics')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg transition duration-200 bg-white ${style.accentText} shadow-sm">Original</button>
                         ${hasPhonetic ? `<button id="tabBtn-phonetic" onclick="switchMobileTab('phonetic')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">Phonétique</button>` : ''}
                         ${hasTranslation ? `<button id="tabBtn-translation" onclick="switchMobileTab('translation')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">Traduction</button>` : ''}
@@ -452,10 +460,10 @@
             }
 
             detailPanel.innerHTML = `
-                <div class="flex items-center justify-between md:hidden mb-4">
+                <div class="flex items-center justify-between md:hidden mb-4 select-none">
                     <button onclick="goBackToList()" class="flex items-center gap-1 ${style.text} font-extrabold text-sm py-2 px-3 ${style.lightBg} rounded-lg transition"><i class="fa-solid fa-arrow-left"></i> Retour</button>
                 </div>
-                <div class="border-b border-slate-200 pb-5 mb-5">
+                <div class="border-b border-slate-200 pb-5 mb-5 select-none">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 w-full text-center md:text-left">${getSongField(song, 'Izenbürüa')}</h2>
                     ${dialect ? `<div class="w-full md:w-auto flex justify-center md:justify-start mt-2"><span class="${style.bg} ${style.text} text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${dialect}</span></div>` : ''}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600 text-center md:text-left">
@@ -469,23 +477,23 @@
                 <div class="w-full md:overflow-x-auto pb-4 mt-2">
                     <div class="flex flex-col md:flex-row gap-6 items-start">
                         <div id="col-lyrics" class="w-full md:w-max md:min-w-[340px] md:max-w-xl bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0">
-                            <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center gap-4"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
+                            <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center gap-4 select-none"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
                             ${formatLyrics(lyricsText)}
                         </div>
                         ${hasPhonetic ? `
                         <div id="col-phonetic" class="w-full md:w-max md:min-w-[340px] md:max-w-xl bg-amber-50/30 p-5 rounded-2xl border border-amber-200/50 shadow-sm shrink-0">
-                            <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center gap-4"><span>Ahozkatzeko idazkera</span><span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique</span></h3>
+                            <h3 class="hidden md:flex text-xs font-bold text-amber-800 uppercase tracking-widest mb-4 border-b border-amber-200 pb-2 justify-between items-center gap-4 select-none"><span>Ahozkatzeko idazkera</span><span class="text-[9px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded">Phonétique</span></h3>
                             ${formatLyrics(phoneticText)}
                         </div>` : ''}
                         ${hasTranslation ? `
                         <div id="col-translation" class="w-full md:w-max md:min-w-[340px] md:max-w-xl bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0">
-                            <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center gap-4"><span>Traduction</span><span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span></h3>
+                            <h3 class="hidden md:flex text-xs font-bold text-slate-600 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center gap-4 select-none"><span>Traduction</span><span class="text-[9px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Français</span></h3>
                             ${formatLyrics(translationText)}
                         </div>` : ''}
                     </div>
                 </div>
 
-                ${getSongField(song, 'Oharrak') ? `<div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700"><h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4><p class="text-sm leading-relaxed">${getSongField(song, 'Oharrak')}</p></div>` : ''}
+                ${getSongField(song, 'Oharrak') ? `<div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700 select-text"><h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1 select-none"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4><p class="text-sm leading-relaxed">${getSongField(song, 'Oharrak')}</p></div>` : ''}
                 ${renderAllMedia(getSongField(song, 'Audio ütürria'))}
             `;
 
@@ -503,7 +511,7 @@
         function goBackToList() {
             document.getElementById('sidebar').classList.remove('hidden');
             const detailPanel = document.getElementById('detailPanel');
-            detailPanel.className = "hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex flex-col justify-center items-center text-slate-400";
+            detailPanel.className = "hidden md:flex flex-1 bg-slate-50 overflow-y-auto p-4 md:p-8 flex flex-col justify-center items-center text-slate-400 select-none";
             detailPanel.innerHTML = `<div class="text-center"><i class="fa-solid fa-music text-6xl mb-4 text-slate-200"></i><p class="text-lg font-medium text-slate-500">Sélectionnez une chanson</p></div>`;
             activeSongId = null; renderSongList();
         }
