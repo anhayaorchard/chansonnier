@@ -25,12 +25,12 @@
         .caesura-br { display: block; }
         .caesura-space { display: none; }
 
-        /* Règle de repli si le vers dépasse 2 lignes (géré par JS) */
+        /* Règle de repli si le vers dépasse 2 lignes */
         .caesura-fallback .caesura-br { display: none !important; }
         .caesura-fallback .caesura-space { display: inline !important; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden select-none">
 
     <!-- En-tête -->
     <header class="bg-emerald-800 text-white shadow-md p-4 flex items-center justify-between z-10 shrink-0">
@@ -121,7 +121,6 @@
             return { bg: 'bg-slate-100', text: 'text-slate-800', border: 'border-slate-600', lightBg: 'bg-slate-50/40', hoverBg: 'hover:bg-slate-50/50', accentText: 'text-slate-700' };
         }
 
-        // Système d'extraction ultra-résistant aux fautes de frappes ou espaces dans les titres de colonnes du Tableur
         function getSongField(song, standardKey) {
             if (!song) return '';
             if (song[standardKey] !== undefined && song[standardKey] !== null && song[standardKey] !== '') {
@@ -130,23 +129,20 @@
             const normalizedTarget = standardKey.toLowerCase().replace(/[^a-z0-9]/g, '');
             for (let key in song) {
                 const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-                if (normalizedKey === normalizedTarget && song[key]) {
-                    return song[key];
-                }
+                if (normalizedKey === normalizedTarget && song[key]) return song[key];
             }
             const kTarget = standardKey.toLowerCase();
             if (kTarget.includes('oraiko') || kTarget.includes('lyrics') || kTarget.includes('paroles')) {
                 for (let key in song) {
                     const kLower = key.toLowerCase();
-                    if ((kLower.includes('idazkera') || kLower.includes('hitz') || kLower.includes('parole') || kLower.includes('lyric') || kLower.includes('texte') || kLower.includes('chant')) && !kLower.includes('ahozkatzeko') && !kLower.includes('frantses')) {
+                    if ((kLower.includes('idazkera') || kLower.includes('hitz') || kLower.includes('parole') || kLower.includes('lyric') || kLower.includes('texte')) && !kLower.includes('ahozkatzeko') && !kLower.includes('frantses')) {
                         return song[key];
                     }
                 }
             }
             if (kTarget.includes('ahozkatzeko') || kTarget.includes('phonetic')) {
                 for (let key in song) {
-                    const kLower = key.toLowerCase();
-                    if (kLower.includes('ahozkatz') || kLower.includes('phonet')) return song[key];
+                    if (key.toLowerCase().includes('ahozkatz') || key.toLowerCase().includes('phonet')) return song[key];
                 }
             }
             if (kTarget.includes('frantsesera') || kTarget.includes('translation') || kTarget.includes('traduction')) {
@@ -267,7 +263,7 @@
         }
 
         function formatLyrics(text) {
-            if (!text || text.toString().trim() === '') return '<p class="text-slate-400 italic font-sans">Paroles en cours de saisie...</p>';
+            if (!text || text.toString().trim() === '') return '<p class="text-slate-400 italic">Paroles en cours de saisie...</p>';
             
             let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let safeText = escapeHtml(normalized);
@@ -289,7 +285,7 @@
                 return `<p>${processedLines.join('<br>')}</p>`;
             });
             
-            return `<div class="lyrics-box text-slate-700 leading-relaxed">${htmlParagraphs.join('')}</div>`;
+            return `<div class="lyrics-box text-slate-700">${htmlParagraphs.join('')}</div>`;
         }
 
         function checkCaesuras() {
@@ -348,7 +344,9 @@
             renderSongList(); const detailPanel = document.getElementById('detailPanel');
             if (window.innerWidth < 768) document.getElementById('sidebar').classList.add('hidden');
             
-            detailPanel.className = "flex-1 bg-white overflow-y-auto p-4 md:p-8 flex flex-col";
+            // PROTECTION ABSOLUE EN MODE BLOCK STANDARD (Empêche l'écrasement à 1px causé par Flexbox)
+            detailPanel.className = "flex-1 bg-white overflow-y-auto p-4 md:p-8 block";
+            
             const dialect = getSongField(song, 'Eüskalkia'); const style = getDialectStyle(dialect);
             
             const lyricsText = getSongField(song, 'Oraiko idazkera');
@@ -371,7 +369,7 @@
             let mobileTabsBar = '';
             if (hasPhonetic || hasTranslation) {
                 mobileTabsBar = `
-                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl shrink-0">
+                    <div class="flex md:hidden border-b border-slate-200 mb-6 p-1 bg-slate-100 rounded-xl">
                         <button id="tabBtn-lyrics" onclick="switchMobileTab('lyrics')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg transition duration-200 bg-white ${style.accentText} shadow-sm">Original</button>
                         ${hasPhonetic ? `<button id="tabBtn-phonetic" onclick="switchMobileTab('phonetic')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">Phonétique</button>` : ''}
                         ${hasTranslation ? `<button id="tabBtn-translation" onclick="switchMobileTab('translation')" class="flex-1 text-center py-2 text-xs font-bold rounded-lg text-slate-600 transition duration-200">Traduction</button>` : ''}
@@ -379,21 +377,21 @@
             }
 
             detailPanel.innerHTML = `
-                <div class="flex items-center justify-between md:hidden mb-4 shrink-0">
+                <div class="flex items-center justify-between md:hidden mb-4">
                     <button onclick="goBackToList()" class="flex items-center gap-1 ${style.text} font-extrabold text-sm py-2 px-3 ${style.lightBg} rounded-lg transition"><i class="fa-solid fa-arrow-left"></i> Retour</button>
                 </div>
-                <div class="border-b border-slate-200 pb-5 mb-5 shrink-0">
+                <div class="border-b border-slate-200 pb-5 mb-5">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 w-full text-center md:text-left">${getSongField(song, 'Izenbürüa')}</h2>
                     ${dialect ? `<div class="w-full md:w-auto flex justify-center md:justify-start mt-2"><span class="${style.bg} ${style.text} text-[11px] px-3 py-1 rounded-full font-bold shadow-sm">${dialect}</span></div>` : ''}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-xs text-slate-600 text-center md:text-left">
                         ${creditBlock}
                         <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Origine</span><span class="font-semibold text-slate-800 truncate block">${getSongField(song, 'Nonkoa') || '—'}</span></div>
-                        <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Année</span><span class="font-semibold text-slate-800 block">${getSongField(song, 'Urtea') || '—'}</span></div>
+                        <div><span class="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Année</span><span class="font-semibold text-slate-800 block">${getSongField(song, 'Urtea'] || '—'}</span></div>
                     </div>
                 </div>
                 ${mobileTabsBar}
                 
-                <!-- Zone de défilement horizontal PC immunisée contre le bug de hauteur mobile -->
+                <!-- Zone saine à l'affichage garanti à 100% -->
                 <div class="w-full md:overflow-x-auto pb-4 mt-2">
                     <div class="flex flex-col md:flex-row gap-6 items-start">
                         <div id="col-lyrics" class="w-full md:w-[420px] bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0">
@@ -413,7 +411,7 @@
                     </div>
                 </div>
 
-                ${getSongField(song, 'Oharrak') ? `<div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700 shrink-0"><h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4><p class="text-sm leading-relaxed">${getSongField(song, 'Oharrak')}</p></div>` : ''}
+                ${getSongField(song, 'Oharrak') ? `<div class="mt-6 bg-blue-50/40 border border-blue-200/50 p-4 rounded-xl text-slate-700"><h4 class="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Notes</h4><p class="text-sm leading-relaxed">${getSongField(song, 'Oharrak')}</p></div>` : ''}
                 ${renderAllMedia(getSongField(song, 'Audio ütürria'))}
             `;
 
