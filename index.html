@@ -16,10 +16,11 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .lyrics-box p { margin-bottom: 1.5rem; line-height: 1.8; font-family: Georgia, Cambria, serif; text-align: center; }
-        strong { color: #b45309; font-weight: 800; font-size: 1.05em; font-style: normal; } 
+        strong, b { color: #b45309; font-weight: 800; font-size: 1.05em; font-style: normal; } 
         u { text-decoration: underline; text-underline-offset: 4px; font-weight: 500; } 
+        em, i { font-style: italic; }
         .refrain-style { display: inline-block; width: 100%; font-style: italic; color: #4b5563; font-weight: 500; } 
-        .refrain-style strong { font-style: italic; }
+        .refrain-style strong, .refrain-style b { font-style: italic; }
 
         /* Structure de césure par défaut */
         .caesura-br { display: block; }
@@ -261,21 +262,21 @@
         function formatLyrics(text) {
             if (!text || text.toString().trim() === '') return '<p class="text-slate-400 italic">Paroles en cours de saisie...</p>';
             
-            let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-            
-            // L'immunisation contre le bug d'affichage : on laisse passer les balises HTML réelles du tableur
-            let safeText = normalized;
+            let safeText = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
+            // Interprétation des syntaxes simplifiées personnalisées et Markdown
+            safeText = safeText.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            safeText = safeText.replace(/\*([^*]+)\*/g, '<em>$1</em>');
             safeText = safeText.replace(/#([^#]+)#/g, '<span class="refrain-style">$1</span>');
-            safeText = safeText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
             safeText = safeText.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
 
             const paragraphs = safeText.split(/\n\n+/);
             const htmlParagraphs = paragraphs.map(p => {
                 const lines = p.split('\n');
                 const processedLines = lines.map(line => {
-                    if (line.includes('/')) {
-                        let cleanLine = line.replace(/\s*\/\s*/g, '<br class="caesura-br"><span class="caesura-space"> </span>');
+                    // PROTECTION : (?<!<)\/ cible uniquement les slashes qui ne font pas partie d'une balise HTML fermante
+                    if (/(?<!<)\//.test(line)) {
+                        let cleanLine = line.replace(/\s*(?<!<)\/\s*/g, '<br class="caesura-br"><span class="caesura-space"> </span>');
                         return `<span class="verse-line-caesura block">${cleanLine}</span>`;
                     }
                     return line;
@@ -307,7 +308,6 @@
             } catch(e) {}
         }
 
-        // Convertit ou nettoie les liens web
         function ensureAbsoluteUrl(url) {
             if (!url) return ''; let clean = url.trim(); return /^https?:\/\//i.test(clean) ? clean : 'https://' + clean;
         }
@@ -389,10 +389,8 @@
                 </div>
                 ${mobileTabsBar}
                 
-                <!-- Conteneur à défilement horizontal optimisé au plus juste -->
                 <div class="w-full md:overflow-x-auto pb-4 mt-2">
                     <div class="flex flex-col md:flex-row gap-6 items-start">
-                        <!-- Utilisation de md:w-max + min/max-width pour mouler le texte parfaitement -->
                         <div id="col-lyrics" class="w-full md:w-max md:min-w-[340px] md:max-w-xl bg-slate-50 p-5 rounded-2xl border border-slate-200/60 shadow-sm shrink-0">
                             <h3 class="hidden md:flex text-xs font-bold ${style.accentText} uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 justify-between items-center gap-4"><span>Oraiko idazkera</span><span class="text-[9px] bg-slate-200/50 text-slate-900 px-2 py-0.5 rounded">Basque</span></h3>
                             ${formatLyrics(lyricsText)}
