@@ -208,6 +208,9 @@
             let normalized = text.toString().replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let safeText = escapeHtml(normalized);
 
+            // CORRECTION : Le "/" est traité EN PREMIER, avant l'injection de balises HTML contenant des slashes (comme </span>)
+            safeText = safeText.replace(/\s*\/\s*/g, '<span class="hidden md:inline"> </span><br class="block md:hidden">');
+
             // 1. Refrains entre # ... #
             safeText = safeText.replace(/#([^#]+)#/gs, '<span class="refrain-style">$1</span>');
 
@@ -217,15 +220,11 @@
             // 3. Mélismes entre [ ... ]
             safeText = safeText.replace(/\[([^\]]+)\]/g, '<u>$1</u>');
             
-            // Centrage structurel par paragraphe et gestion responsive du "/"
+            // Centrage structurel par paragraphe
             const paragraphs = safeText.split(/\n\n+/);
             const htmlParagraphs = paragraphs.map(p => {
                 const lines = p.split('\n');
-                const processedLines = lines.map(line => {
-                    // Remplace le "/" par un espace sur grand écran et force un retour à la ligne (<br>) sur petit écran
-                    return line.replace(/\s*\/\s*/g, '<span class="hidden md:inline"> </span><br class="block md:hidden">');
-                });
-                return `<p>${processedLines.join('<br>')}</p>`;
+                return `<p>${lines.join('<br>')}</p>`;
             });
             
             return `<div class="lyrics-box text-slate-700 leading-relaxed">${htmlParagraphs.join('')}</div>`;
